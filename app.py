@@ -13,26 +13,19 @@ st.write("Targeting artists with overlap across western (Rule34) and eastern (Da
 # ────────────────────────────────────────
 @st.cache_data
 def load_data():
-    # Updated to 'artist.csv' per your Github structure
     file_path = "artist.csv" 
     try:
         df = pd.read_csv(file_path)
-        # Clean column names in case of trailing spaces
         df.columns = [c.strip() for c in df.columns]
         
-        # Data Cleaning
         df['name'] = df['name'].astype(str).str.strip()
         df['rule34_posts'] = pd.to_numeric(df['rule34_posts'], errors='coerce').fillna(0).astype(int)
         df['danbooru_posts'] = pd.to_numeric(df['danbooru_posts'], errors='coerce').fillna(0).astype(int)
         
-        # Filter out empty names
         df = df[df['name'].str.len() >= 2]
         return df
     except FileNotFoundError:
-        st.error(f"File '{file_path}' not found in the current directory.")
-        return pd.DataFrame(columns=['name', 'rule34_posts', 'danbooru_posts'])
-    except Exception as e:
-        st.error(f"Error loading CSV: {e}")
+        st.error(f"File '{file_path}' not found.")
         return pd.DataFrame(columns=['name', 'rule34_posts', 'danbooru_posts'])
 
 df_overlap = load_data()
@@ -42,15 +35,24 @@ df_overlap = load_data()
 # ────────────────────────────────────────
 with st.sidebar:
     st.header("📊 Dataset Stats")
-    # Kept these stats as requested
     st.write("Total Artists: **20,374**")
     
     st.divider()
     st.subheader("Filter by Presence")
     
-    # Dual Filters
-    min_r34 = st.number_input("Min Rule34 Posts", 0, 15000, 10, help="Targets western popularity.")
-    min_dan = st.number_input("Min Danbooru Posts", 0, 6000, 31)
+    # Rule34 Range
+    col_r34_1, col_r34_2 = st.columns(2)
+    with col_r34_1:
+        min_r34 = st.number_input("Min R34", 0, 20000, 10)
+    with col_r34_2:
+        max_r34 = st.number_input("Max R34", 0, 20000, 15000)
+    
+    # Danbooru Range
+    col_dan_1, col_dan_2 = st.columns(2)
+    with col_dan_1:
+        min_dan = st.number_input("Min Dan", 0, 10000, 31)
+    with col_dan_2:
+        max_dan = st.number_input("Max Dan", 0, 10000, 6000)
     
     st.divider()
     st.subheader("Combo Settings")
@@ -65,18 +67,20 @@ with st.sidebar:
     )
     add_weights = st.checkbox("Add NovelAI Weights", value=False)
 
-    # Filtering Logic
+    # Filtering Logic (Now includes Max bounds)
     filtered = df_overlap[
         (df_overlap['rule34_posts'] >= min_r34) & 
-        (df_overlap['danbooru_posts'] >= min_dan)
+        (df_overlap['rule34_posts'] <= max_r34) &
+        (df_overlap['danbooru_posts'] >= min_dan) &
+        (df_overlap['danbooru_posts'] <= max_dan)
     ]
     
     artists_list = filtered['name'].tolist()
     
-    st.write("") # Spacer
+    st.write("") 
 
     # ────────────────────────────────────────
-    # THE SMALL STATUS BAR (Bottom of Sidebar)
+    # THE SMALL STATUS BAR
     # ────────────────────────────────────────
     if not filtered.empty:
         st.markdown(
@@ -111,7 +115,6 @@ def generate_combo():
         else: # Combined
             weights = filtered['rule34_posts'].values + filtered['danbooru_posts'].values
         
-        # Safety for zero weights
         weights = weights + 0.1 
         prob = weights / weights.sum()
         chosen = np.random.choice(artists_list, size=k, replace=False, p=prob)
